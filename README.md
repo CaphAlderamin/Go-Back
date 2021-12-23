@@ -1,13 +1,13 @@
-###
-use test; select * from checkList;
+### Database commands
 show databases;
+
 show tables;
 
-###
+use rip_db; select * from checkList;
+### Docker database volume delete
 docker volume ls
-docker volume rm golang-docker-tutorial_mysql_data
 
-###
-docker exec -it test_db mysql -uroot -p
-
+docker volume rm rip_mysql_data
+### Docker enter in bd container
+docker exec -it Rip_db mysql -uroot -p
 ###
