@@ -14,6 +14,8 @@ func InitRoute() *gin.Engine {
 
 	router.POST("/task", AddTaskApi)
 
+	router.PUT("/taskstatus", ModTaskStatusApi)
+
 	router.PUT("/task", ModTaskApi)
 
 	router.DELETE("/task", DelTaskApi)
