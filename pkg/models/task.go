@@ -2,6 +2,11 @@ package models
 
 import (
 	db "Rip/pkg/database"
+	"Rip/pkg/rabbitmq"
+	"encoding/json"
+	"github.com/streadway/amqp"
+	"log"
+	"strconv"
 )
 
 type Task struct {
@@ -11,85 +16,182 @@ type Task struct {
 	TaskStatus      bool   `json:"taskStatus" form:"taskStatus"`
 }
 
-//Get all tasks list
-func (task *Task) GetTasks() (tasks []Task, err error) {
-	tasks = make([]Task, 0)
-	rows, err := db.MySqlDB.Query("SELECT id, taskName, taskDescription, taskStatus FROM checkList")
-	defer rows.Close()
+func failOnError(err error, msg string) {
 	if err != nil {
-		return
+		log.Fatalf("%s: %s", msg, err)
 	}
+}
 
-	for rows.Next() {
-		var task Task
-		err := rows.Scan(&task.Id, &task.TaskName, &task.TaskDescription, &task.TaskStatus)
-		if err != nil {
-			return nil, err
+//Get index string
+func GetIndex() {
+	msgs, err := rabbitmq.AmqpChannel.Consume(
+		"GetIndex",
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	failOnError(err, "Failed to register a consumer GetIndex")
+
+	go func() {
+		for d := range msgs {
+			log.Printf("Received a message: %s", d.Body)
 		}
-		tasks = append(tasks, task)
-	}
-	if err = rows.Err(); err != nil {
-		return
-	}
-	return
+	}()
+}
+
+//Get all tasks list
+func GetTasks() {
+	msgs, err := rabbitmq.AmqpChannel.Consume(
+		"GetTasks",
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	failOnError(err, "Failed to register a consumer GetTasks")
+
+	go func() {
+		for _ = range msgs {
+			tasks := make([]Task, 0)
+			rows, err := db.MySqlDB.Query("SELECT id, taskName, taskDescription, taskStatus FROM checkList")
+			defer rows.Close()
+			if err != nil {
+				return
+			}
+
+			for rows.Next() {
+				var task Task
+				err := rows.Scan(&task.Id, &task.TaskName, &task.TaskDescription, &task.TaskStatus)
+				failOnError(err, "Rows scan from bd is failed")
+				tasks = append(tasks, task)
+			}
+			failOnError(err, "Rows next from bd is failed")
+
+			marshaledTasks, err := json.Marshal(tasks)
+			if err != nil {
+				log.Fatalln(err)
+			}
+
+			err = rabbitmq.AmqpChannel.Publish(
+				"",             // exchange
+				"GetTasksResp", // routing key
+				false,          // mandatory
+				false,          // immediate
+				amqp.Publishing{
+					ContentType: "text/plain",
+					Body:        marshaledTasks,
+				})
+			failOnError(err, "Failed to publish a message GetTasksResp")
+		}
+	}()
 }
 
 //Create new task (Body raw JSON)
-func (task *Task) AddTask() (id int64, err error) {
-	rs, err := db.MySqlDB.Exec(
-		"INSERT INTO checkList(taskName, taskDescription, taskStatus) VALUES (?, ?, ?)",
-		task.TaskName, task.TaskDescription, task.TaskStatus)
-	if err != nil {
-		return
-	}
+func AddTask() {
+	msgs, err := rabbitmq.AmqpChannel.Consume(
+		"PostTask",
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	failOnError(err, "Failed to register a consumer GetIndex")
 
-	id, err = rs.LastInsertId()
-	return
+	go func() {
+		for d := range msgs {
+			task := Task{}
+			err := json.Unmarshal(d.Body, &task)
+			failOnError(err, "Failed to unmarshal task")
+
+			_, err = db.MySqlDB.Exec(
+				"INSERT INTO checkList(taskName, taskDescription, taskStatus) VALUES (?, ?, ?)",
+				task.TaskName, task.TaskDescription, task.TaskStatus)
+			failOnError(err, "Failed to write task in database")
+		}
+	}()
 }
 
 //Update the task status by id (Query Params + Body raw JSON)
-func (task *Task) ModTaskStatus() (resTask Task, err error) {
-	_, err = db.MySqlDB.Exec(
-		"UPDATE checkList SET taskStatus=? WHERE id=?",
-		task.TaskStatus, task.Id)
-	if err != nil {
-		return
-	}
+func ModTaskStatus() {
+	msgs, err := rabbitmq.AmqpChannel.Consume(
+		"ModTaskStatus",
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	failOnError(err, "Failed to register a consumer ModTaskStatus")
 
-	resTask, err = getResTask(task.Id)
-	if err != nil {
-		return
-	}
+	go func() {
+		for d := range msgs {
+			task := Task{}
+			err := json.Unmarshal(d.Body, &task)
 
-	return
+			_, err = db.MySqlDB.Exec(
+				"UPDATE checkList SET taskStatus=? WHERE id=?",
+				task.TaskStatus, task.Id)
+			failOnError(err, "Failed to rewrite status task in database")
+		}
+	}()
 }
 
 //Update the task by id (Query Params + Body raw JSON)
-func (task *Task) ModTask() (resTask Task, err error) {
-	_, err = db.MySqlDB.Exec(
-		"UPDATE checkList SET taskName=?, taskDescription=? WHERE id=?",
-		task.TaskName, task.TaskDescription, task.Id)
-	if err != nil {
-		return
-	}
+func ModTask() {
+	msgs, err := rabbitmq.AmqpChannel.Consume(
+		"ModTask",
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	failOnError(err, "Failed to register a consumer ModTask")
 
-	resTask, err = getResTask(task.Id)
-	if err != nil {
-		return
-	}
+	go func() {
+		for d := range msgs {
+			task := Task{}
+			err := json.Unmarshal(d.Body, &task)
 
-	return
+			_, err = db.MySqlDB.Exec(
+				"UPDATE checkList SET taskName=?, taskDescription=? WHERE id=?",
+				task.TaskName, task.TaskDescription, task.Id)
+			failOnError(err, "Failed to rewrite task in database")
+		}
+	}()
 }
 
 //Delete the task by id
-func (task *Task) DelTask() (rv int64, err error) {
-	rs, err := db.MySqlDB.Exec("DELETE FROM checkList WHERE id=?", task.Id)
-	if err != nil {
-		return
-	}
+func DelTask() {
+	msgs, err := rabbitmq.AmqpChannel.Consume(
+		"DeleteTask",
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	failOnError(err, "Failed to register a consumer DeleteTask")
 
-	rv, err = rs.RowsAffected()
-	return
+	go func() {
+		for d := range msgs {
+			id, err := strconv.Atoi(string(d.Body))
+			failOnError(err, "Failed to decode DeleteTask body")
+
+			_, err = db.MySqlDB.Exec("DELETE FROM checkList WHERE id=?", id)
+			failOnError(err, "Failed to delete task in database")
+		}
+	}()
 }
 
 func getResTask(id int) (resTask Task, err error) {

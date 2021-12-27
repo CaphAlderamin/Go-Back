@@ -2,26 +2,47 @@ package api
 
 import (
 	. "Rip/pkg/models"
+	"Rip/pkg/rabbitmq"
+	"encoding/json"
 	"github.com/gin-gonic/gin"
+	"github.com/streadway/amqp"
 	"log"
 	"net/http"
 	"strconv"
 )
 
+func failOnError(err error, msg string) {
+	if err != nil {
+		log.Fatalf("%s: %s", msg, err)
+	}
+}
+
 func IndexApi(c *gin.Context) {
-	c.String(http.StatusOK, "It works")
+	body := "It works!"
+	err := rabbitmq.AmqpChannel.Publish(
+		"",         // exchange
+		"GetIndex", // routing key
+		false,      // mandatory
+		false,      // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(body),
+		})
+	failOnError(err, "Failed to publish a message GetIndex")
+
+	//c.String(http.StatusOK, "GetIndex request received")
 }
 
 func GetTasksApi(c *gin.Context) {
-	task := Task{}
-	tasks, err := task.GetTasks()
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"data": tasks,
-	})
+	err := rabbitmq.AmqpChannel.Publish(
+		"",         // exchange
+		"GetTasks", // routing key
+		false,      // mandatory
+		false,      // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+		})
+	failOnError(err, "Failed to publish a message GetTasks")
 }
 
 func AddTaskApi(c *gin.Context) {
@@ -31,15 +52,25 @@ func AddTaskApi(c *gin.Context) {
 		log.Fatalln(err)
 	}
 
-	ra, err := task.AddTask()
+	marshaledTask, err := json.Marshal(task)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	task.Id = int(ra)
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": task,
-	})
+	err = rabbitmq.AmqpChannel.Publish(
+		"",         // exchange
+		"PostTask", // routing key
+		false,      // mandatory
+		false,      // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        marshaledTask,
+		})
+	failOnError(err, "Failed to publish a message PostTask")
+
+	//c.JSON(http.StatusOK, gin.H{
+	//	"data": task,
+	//})
 }
 
 func ModTaskStatusApi(c *gin.Context) {
@@ -55,10 +86,21 @@ func ModTaskStatusApi(c *gin.Context) {
 		log.Fatalln(err)
 	}
 
-	task, err = task.ModTaskStatus()
+	marshaledTask, err := json.Marshal(task)
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	err = rabbitmq.AmqpChannel.Publish(
+		"",              // exchange
+		"ModTaskStatus", // routing key
+		false,           // mandatory
+		false,           // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        marshaledTask,
+		})
+	failOnError(err, "Failed to publish a message ModTaskStatus")
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": task,
@@ -78,10 +120,21 @@ func ModTaskApi(c *gin.Context) {
 		log.Fatalln(err)
 	}
 
-	task, err = task.ModTask()
+	marshaledTask, err := json.Marshal(task)
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	err = rabbitmq.AmqpChannel.Publish(
+		"",        // exchange
+		"ModTask", // routing key
+		false,     // mandatory
+		false,     // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        marshaledTask,
+		})
+	failOnError(err, "Failed to publish a message ModTask")
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": task,
@@ -95,12 +148,21 @@ func DelTaskApi(c *gin.Context) {
 		log.Fatalln(err)
 	}
 
-	task := Task{Id: id}
-
-	_, err = task.DelTask()
+	marshaledId, err := json.Marshal(id)
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	err = rabbitmq.AmqpChannel.Publish(
+		"",           // exchange
+		"DeleteTask", // routing key
+		false,        // mandatory
+		false,        // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        marshaledId,
+		})
+	failOnError(err, "Failed to publish a message DeleteTask")
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": true,
