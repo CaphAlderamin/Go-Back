@@ -11,5 +11,3 @@ INSERT INTO `checkList` (`taskName`, `taskDescription`,`taskStatus`)
 VALUES ('Wake up', 'I need to wake up at 9 am', true),
        ('Do RIP labs', 'I need to do RIP labs', false),
        ('Now i work', 'time is now', false);
-
-#select * from checkList;
