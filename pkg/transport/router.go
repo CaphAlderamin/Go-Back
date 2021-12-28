@@ -8,17 +8,13 @@ import (
 func InitRoute() *gin.Engine {
 	router := gin.Default()
 
-	router.GET("/", IndexApi)
+	router.LoadHTMLFiles("index.html")
 
-	router.GET("/tasks", GetTasksApi)
+	router.GET("/", func(c *gin.Context) {
+		c.HTML(200, "index.html", nil)
+	})
 
-	router.POST("/task", AddTaskApi)
-
-	router.PUT("/taskstatus", ModTaskStatusApi)
-
-	router.PUT("/task", ModTaskApi)
-
-	router.DELETE("/task", DelTaskApi)
+	router.GET("/ws", WebSocketMessageReceiver)
 
 	return router
 }

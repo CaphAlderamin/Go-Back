@@ -5,7 +5,7 @@ import (
 )
 
 type Task struct {
-	Id              int    `json:"id" form:"id"`
+	Id              int    `json:"id,string" form:"id"`
 	TaskName        string `json:"taskName" form:"taskName"`
 	TaskDescription string `json:"taskDescription" form:"taskDescription"`
 	TaskStatus      bool   `json:"taskStatus" form:"taskStatus"`
@@ -82,13 +82,13 @@ func (task *Task) ModTask() (resTask Task, err error) {
 }
 
 //Delete the task by id
-func (task *Task) DelTask() (rv int64, err error) {
-	rs, err := db.MySqlDB.Exec("DELETE FROM checkList WHERE id=?", task.Id)
+func (task *Task) DelTask() (id int, err error) {
+	_, err = db.MySqlDB.Exec("DELETE FROM checkList WHERE id=?", task.Id)
 	if err != nil {
 		return
 	}
 
-	rv, err = rs.RowsAffected()
+	id = task.Id
 	return
 }
 

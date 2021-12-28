@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+  <title>123</title>
+</head>
+
+<body>
+<h3>WebSocket Go</h3>
+<pre id="output"></pre>
+
+<script>
+  url = 'ws://localhost:8080/ws';
+  c = new WebSocket(url);
+
+  send = function(type, data){
+    c.send(JSON.stringify({
+      type: type,
+      data: data
+    }));
+  }
+
+  c.onmessage = function(msg){
+    $('#output').append(msg.data, "\n\n")
+    console.log(msg)
+  }
+
+  c.onopen = function(){
+    //send("WebSocket is ready to work")
+    console.log("WebSocket is ready to work")
+
+
+    send("GetIndex", "")
+
+    send("GetTasks", "")
+
+    send("PostTask", {
+              "taskName": "Hello",
+              "taskDescription": "I'm WebSocket and i'm working",
+              "taskStatus": false
+            })
+
+    send("ModTaskStatus", {
+              "id": "43",
+              "taskStatus": true,
+            })
+
+    send("ModTask", {
+              "id": "43",
+              "taskName": "Changed 123123123123123 Hello",
+              "taskDescription": "Changed 123123123123123 I'm WebSocket and i'm working",
+              "taskStatus": false
+            })
+
+    send("DelTask", {
+              "id": "43",
+            })
+
+    send("GetTasks", "")
+
+  }
+</script>
+
+</body>
+</html>
