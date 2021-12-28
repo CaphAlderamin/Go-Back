@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"log"
+	"net/http"
 )
 
 type WsMessageTasks struct {
@@ -21,7 +22,7 @@ type WsMessageTasks struct {
 
 type WsMessageTask struct {
 	Type string `json:"type"`
-	Task Task   `json:"data"`
+	Task Task   `json:"task"`
 }
 
 type ConnectUser struct {
@@ -32,6 +33,9 @@ type ConnectUser struct {
 var users []ConnectUser
 
 var wsUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 }
@@ -39,7 +43,7 @@ var wsUpgrader = websocket.Upgrader{
 func WebSocketMessageReceiver(c *gin.Context) {
 	conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		fmt.Println("Failed to set websocket upgrade: %+v", err)
+		fmt.Println("Failed to set websocket upgrade: ", err)
 		return
 	}
 
@@ -54,10 +58,8 @@ func WebSocketMessageReceiver(c *gin.Context) {
 	users = append(users, socketClient)
 	log.Println("Number of connected users: ", len(users))
 
-	GetTasks(socketClient)
-
 	for {
-		messageType, message, err := conn.ReadMessage()
+		msgType, msg, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("WebSocket '", socketClient.UserIp, "' is not answering. Disconnecting...\n", err.Error())
 			for i, v := range users {
@@ -69,17 +71,17 @@ func WebSocketMessageReceiver(c *gin.Context) {
 			return
 		}
 
-		var msg *WsMessageTask
-		err = json.Unmarshal(message, &msg)
+		var message *WsMessageTask
+		err = json.Unmarshal(msg, &message)
 		if err != nil {
 			fmt.Print("Decode error")
 		}
-		switch msg.Type {
+		switch message.Type {
 		//--------------------------------------------------------//
 		case "GetIndex":
 			text, err := json.Marshal("It works")
 
-			err = conn.WriteMessage(messageType, text)
+			err = conn.WriteMessage(msgType, text)
 			if err != nil {
 				return
 			}
@@ -92,27 +94,9 @@ func WebSocketMessageReceiver(c *gin.Context) {
 				log.Fatalln(err)
 			}
 
-			marshaledTasks, err := json.Marshal(tasks)
-			if err != nil {
-				log.Fatalln(err)
-			}
-
-			err = conn.WriteMessage(messageType, marshaledTasks)
-			if err != nil {
-				return
-			}
-			break
-			//--------------------------------------------------------//
-		case "PostTask":
-			ra, err := msg.Task.AddTask()
-			if err != nil {
-				log.Fatalln(err)
-			}
-			msg.Task.Id = int(ra)
-
-			var messageToUser = WsMessageTask{
-				Type: "PostTask",
-				Task: msg.Task,
+			var messageToUser = WsMessageTasks{
+				Type:  "GetTasks",
+				Tasks: tasks,
 			}
 
 			msgToUser, err := json.Marshal(messageToUser)
@@ -120,11 +104,34 @@ func WebSocketMessageReceiver(c *gin.Context) {
 				log.Fatalln(err)
 			}
 
-			WriteMessageToEveryUser(messageType, msgToUser)
+			err = conn.WriteMessage(msgType, msgToUser)
+			if err != nil {
+				return
+			}
+			break
+			//--------------------------------------------------------//
+		case "PostTask":
+			ra, err := message.Task.AddTask()
+			if err != nil {
+				log.Fatalln(err)
+			}
+			message.Task.Id = int(ra)
+
+			var messageToUser = WsMessageTask{
+				Type: "PostTask",
+				Task: message.Task,
+			}
+
+			msgToUser, err := json.Marshal(messageToUser)
+			if err != nil {
+				log.Fatalln(err)
+			}
+
+			WriteMessageToEveryUser(msgType, msgToUser)
 			break
 			//--------------------------------------------------------//
 		case "ModTaskStatus":
-			task, err := msg.Task.ModTaskStatus()
+			task, err := message.Task.ModTaskStatus()
 			if err != nil {
 				log.Fatalln(err)
 			}
@@ -139,11 +146,11 @@ func WebSocketMessageReceiver(c *gin.Context) {
 				log.Fatalln(err)
 			}
 
-			WriteMessageToEveryUser(messageType, msgToUser)
+			WriteMessageToEveryUser(msgType, msgToUser)
 			break
 			//--------------------------------------------------------//
 		case "ModTask":
-			task, err := msg.Task.ModTask()
+			task, err := message.Task.ModTask()
 			if err != nil {
 				log.Fatalln(err)
 			}
@@ -158,11 +165,11 @@ func WebSocketMessageReceiver(c *gin.Context) {
 				log.Fatalln(err)
 			}
 
-			WriteMessageToEveryUser(messageType, msgToUser)
+			WriteMessageToEveryUser(msgType, msgToUser)
 			break
 			//--------------------------------------------------------//
 		case "DelTask":
-			id, err := msg.Task.DelTask()
+			id, err := message.Task.DelTask()
 			if err != nil {
 				log.Fatalln(err)
 			}
@@ -179,7 +186,7 @@ func WebSocketMessageReceiver(c *gin.Context) {
 				log.Fatalln(err)
 			}
 
-			WriteMessageToEveryUser(messageType, msgToUser)
+			WriteMessageToEveryUser(msgType, msgToUser)
 			break
 			//--------------------------------------------------------//
 		}
